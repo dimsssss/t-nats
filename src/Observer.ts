@@ -14,8 +14,12 @@ export class Observer {
       throw new Error('sid should be unique');
     }
 
-    if (group) {
+    if (args.length === 3) {
       this.queueGroup[group].push(client);
+    }
+
+    if (!this.subjects[subject]) {
+      this.subjects[subject] = [];
     }
 
     this.subjects[subject].push({ sid: client });
