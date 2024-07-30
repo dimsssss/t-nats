@@ -2,8 +2,7 @@ import { Socket } from 'net';
 import { Observer } from './Observer';
 
 export class Client {
-  private bufferArgs: number[] = [];
-  private args: number[] = [];
+  bufferArgs: number[] = [];
   status: string = '';
   commandIndex = 0;
   payloadSize = 0;
@@ -17,6 +16,7 @@ export class Client {
     this.status = '';
     this.setPayloadSize(0);
     this.setCommandIndex(0);
+    this.bufferArgs = [];
   }
 
   setStatus(status: string) {
@@ -58,5 +58,9 @@ export class Client {
 
   subscribe(args: string[]) {
     this.observer.addClient(this, args);
+  }
+
+  publish(args: string[]) {
+    this.observer.publish(args);
   }
 }
