@@ -163,6 +163,7 @@ export class Parser {
         ) {
           continue;
         }
+        client.commandIndex = i - 1;
         client.status = C_PUB_ARG;
       } else if (client.status === C_PUB_ARG) {
         if (buffer[i] === '\r'.charCodeAt(0)) {
@@ -174,7 +175,6 @@ export class Parser {
 
           client.payloadSize = Number(args.subarray(bytesIndex, args.length));
           client.addArgs(buffer);
-          client.commandIndex = i + 1;
           client.status = C_PUB_MSG;
           skip = 0;
         }
@@ -196,12 +196,16 @@ export class Parser {
         if (buffer[i] !== '\n'.charCodeAt(0)) {
           throw new Error('');
         }
-        const payload = buffer
-          .subarray(0, i - 1)
+        const args = Buffer.from(client.bufferArgs)
+          .subarray(0, client.bufferArgs.length - 1)
           .toString()
           .split(' ');
+        client.publish([
+          ...args,
+          buffer.subarray(0, buffer.length - 2).toString(),
+        ]);
         client.clearStatus();
-        return payload;
+        return args;
       } else if (client.status === C_PI) {
         client.status = C_PIN;
       } else if (client.status === C_PIN) {
@@ -246,7 +250,7 @@ export class Parser {
         } else if (buffer[i] === '\n'.charCodeAt(0)) {
           client.addArgs(buffer);
           const args = buffer
-            .subarray(client.commandIndex, buffer.length - skip)
+            .subarray(client.commandIndex, i - skip)
             .toString()
             .split(' ');
           skip = 0;
