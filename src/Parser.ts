@@ -1,3 +1,4 @@
+import { Client } from './Client';
 import {
   C_C,
   C_CO,
@@ -32,96 +33,84 @@ import {
  * {@link https://github.com/nats-io/nats-server/blob/45e6812d70e42891ea2ff57e0a9a6051fa5a1d27/server/parser.go#L159}
  */
 export class Parser {
-  private operationStatus = '';
-  private args: number[] = [];
-  private payloadSize: number = 0;
-  private commandEnd = 0;
-
   constructor() {}
 
-  private clearStatus() {
-    this.operationStatus = '';
-    this.payloadSize = 0;
-    this.commandEnd = 0;
-  }
-
-  parse(buffer: Buffer) {
+  parse(buffer: Buffer, client: Client) {
     let i = 0;
     let skip = 0;
 
     for (i = 0; i < buffer.length; i++) {
-      if (!this.operationStatus) {
-        this.args = [];
+      if (!client.status) {
         // buffer의 첫글자로 operation 설정
         if (
           buffer[i] === 'c'.charCodeAt(0) ||
           buffer[i] === 'C'.charCodeAt(0)
         ) {
-          this.operationStatus = C_C;
+          client.status = C_C;
         } else if (
           buffer[i] === 'p'.charCodeAt(0) ||
           buffer[i] === 'P'.charCodeAt(0)
         ) {
-          this.operationStatus = C_P;
+          client.status = C_P;
         } else if (
           buffer[i] === 's'.charCodeAt(0) ||
           buffer[i] === 'S'.charCodeAt(0)
         ) {
-          this.operationStatus = C_S;
+          client.status = C_S;
         } else {
           throw new Error('not supported commnad\r\n');
         }
       }
 
-      if (this.operationStatus === C_C) {
+      if (client.status === C_C) {
         if (
           buffer[i] === 'O'.charCodeAt(0) ||
           buffer[i] === 'o'.charCodeAt(0)
         ) {
-          this.operationStatus = C_CO;
+          client.status = C_CO;
           continue;
         }
-      } else if (this.operationStatus === C_CO) {
+      } else if (client.status === C_CO) {
         if (
           buffer[i] === 'N'.charCodeAt(0) ||
           buffer[i] === 'n'.charCodeAt(0)
         ) {
-          this.operationStatus = C_CON;
+          client.status = C_CON;
           continue;
         }
-      } else if (this.operationStatus === C_CON) {
+      } else if (client.status === C_CON) {
         if (
           buffer[i] === 'N'.charCodeAt(0) ||
           buffer[i] === 'n'.charCodeAt(0)
         ) {
-          this.operationStatus = C_CONN;
+          client.status = C_CONN;
           continue;
         }
-      } else if (this.operationStatus === C_CONN) {
+      } else if (client.status === C_CONN) {
         if (
           buffer[i] === 'E'.charCodeAt(0) ||
           buffer[i] === 'e'.charCodeAt(0)
         ) {
-          this.operationStatus = C_CONNE;
+          client.status = C_CONNE;
           continue;
         }
-      } else if (this.operationStatus === C_CONNE) {
+      } else if (client.status === C_CONNE) {
         if (
           buffer[i] === 'C'.charCodeAt(0) ||
           buffer[i] === 'c'.charCodeAt(0)
         ) {
-          this.operationStatus = C_CONNEC;
+          client.status = C_CONNEC;
           continue;
         }
-      } else if (this.operationStatus === C_CONNEC) {
+      } else if (client.status === C_CONNEC) {
         if (
           buffer[i] === 'T'.charCodeAt(0) ||
           buffer[i] === 't'.charCodeAt(0)
         ) {
-          this.operationStatus = C_CONNECT;
+          client.status = C_CONNECT;
           continue;
         }
-      } else if (this.operationStatus === C_CONNECT) {
+      } else if (client.status === C_CONNECT) {
         if (
           buffer[i] === ' '.charCodeAt(0) ||
           buffer[i] === '\t'.charCodeAt(0)
@@ -129,164 +118,149 @@ export class Parser {
           continue;
         }
 
-        this.commandEnd = i;
-        this.operationStatus = C_CONNECT_ARG;
-      } else if (this.operationStatus === C_CONNECT_ARG) {
+        client.setCommandIndex(i);
+        client.status = C_CONNECT_ARG;
+      } else if (client.status === C_CONNECT_ARG) {
         if (buffer[i] === '\r'.charCodeAt(0)) {
           skip = 1;
         } else if (buffer[i] === '\n'.charCodeAt(0)) {
-          this.args.push(...buffer.subarray(this.commandEnd, i - skip));
-          const args = JSON.stringify(
-            buffer.subarray(this.commandEnd, i - skip).toString(),
-          );
-          this.clearStatus();
+          client.addBuffer(buffer);
+
           skip = 0;
-          return args;
+          const result = buffer
+            .subarray(client.commandIndex, buffer.length - 2)
+            .toString();
+          client.clearStatus();
+          return JSON.stringify(result);
         }
-      } else if (this.operationStatus === C_P) {
+      } else if (client.status === C_P) {
         if (
           buffer[i] === 'U'.charCodeAt(0) ||
           buffer[i] === 'u'.charCodeAt(0)
         ) {
-          this.operationStatus = C_PU;
+          client.status = C_PU;
           continue;
         }
         if (
           buffer[i] === 'I'.charCodeAt(0) ||
           buffer[i] === 'i'.charCodeAt(0)
         ) {
-          this.operationStatus = C_PI;
+          client.status = C_PI;
           continue;
         }
-      } else if (this.operationStatus === C_PU) {
+      } else if (client.status === C_PU) {
         if (
           buffer[i] === 'B'.charCodeAt(0) ||
           buffer[i] === 'b'.charCodeAt(0)
         ) {
-          this.operationStatus = C_PUB;
+          client.status = C_PUB;
           continue;
         }
-      } else if (this.operationStatus === C_PUB) {
+      } else if (client.status === C_PUB) {
         if (
           buffer[i] === ' '.charCodeAt(0) ||
           buffer[i] === '\t'.charCodeAt(0)
         ) {
           continue;
         }
-        this.operationStatus = C_PUB_ARG;
-      } else if (this.operationStatus === C_PUB_ARG) {
+        client.commandIndex = i - 1;
+        client.status = C_PUB_ARG;
+      } else if (client.status === C_PUB_ARG) {
         if (buffer[i] === '\r'.charCodeAt(0)) {
           skip = 1;
         } else if (buffer[i] === '\n'.charCodeAt(0)) {
-          const args = buffer.subarray(this.commandEnd, i - skip);
+          const args = buffer.subarray(client.commandIndex, i - skip);
           const bytesIndex =
             args.findLastIndex((value) => value === ' '.charCodeAt(0)) + 1;
 
-          this.payloadSize = Number(args.subarray(bytesIndex, args.length));
-
-          if (isNaN(this.payloadSize)) {
-            this.clearStatus();
-            throw new Error('[ERROR] invalid #bytes\r\n');
-          }
-
-          this.args.push(...buffer.subarray(this.commandEnd, i - skip));
-          this.commandEnd = i + 1;
-          this.operationStatus = C_PUB_MSG;
+          client.payloadSize = Number(args.subarray(bytesIndex, args.length));
+          client.addArgs(buffer);
+          client.status = C_PUB_MSG;
           skip = 0;
-        } else {
-          if (this.args.length > 0) {
-            this.args.push(buffer[i]);
-          }
         }
-      } else if (this.operationStatus === C_PUB_MSG) {
-        if (buffer.length - 2 !== this.payloadSize) {
-          this.clearStatus();
-          throw new Error('[ERROR] payload size invalid\r\n');
-        }
-
-        this.operationStatus = C_PAYLOAD;
+      } else if (client.status === C_PUB_MSG) {
+        client.status = C_PAYLOAD;
         i -= 1;
-      } else if (this.operationStatus === C_PAYLOAD) {
-        if (i + 1 === this.payloadSize) {
-          this.operationStatus = C_PAYLOAD_RE;
+      } else if (client.status === C_PAYLOAD) {
+        if (i + 1 === client.payloadSize) {
+          client.status = C_PAYLOAD_RE;
           continue;
         }
-      } else if (this.operationStatus === C_PAYLOAD_RE) {
+      } else if (client.status === C_PAYLOAD_RE) {
         if (buffer[i] !== '\r'.charCodeAt(0)) {
           throw new Error();
         }
 
-        this.operationStatus = C_PAYLOAD_NE;
-      } else if (this.operationStatus === C_PAYLOAD_NE) {
+        client.status = C_PAYLOAD_NE;
+      } else if (client.status === C_PAYLOAD_NE) {
         if (buffer[i] !== '\n'.charCodeAt(0)) {
           throw new Error('');
         }
-        const payload = buffer
-          .subarray(0, i - 1)
+        const args = Buffer.from(client.bufferArgs)
+          .subarray(0, client.bufferArgs.length - 1)
           .toString()
           .split(' ');
-        this.clearStatus();
-        return payload;
-      } else if (this.operationStatus === C_PI) {
-        this.operationStatus = C_PIN;
-      } else if (this.operationStatus === C_PIN) {
-        this.operationStatus = C_PING;
-      } else if (this.operationStatus === C_PING) {
+        client.publish([
+          ...args,
+          buffer.subarray(0, buffer.length - 2).toString(),
+        ]);
+        client.clearStatus();
+        return args;
+      } else if (client.status === C_PI) {
+        client.status = C_PIN;
+      } else if (client.status === C_PIN) {
+        client.status = C_PING;
+      } else if (client.status === C_PING) {
         if (buffer[i] !== '\r'.charCodeAt(0)) {
           skip = 1;
           continue;
         }
         if (buffer[i] !== '\n'.charCodeAt(0)) {
-          this.operationStatus = '';
+          client.status = '';
           return `PONG\r\n`;
         }
-      } else if (this.operationStatus === C_S) {
+      } else if (client.status === C_S) {
         if (
           buffer[i] === 'U'.charCodeAt(0) ||
           buffer[i] === 'u'.charCodeAt(0)
         ) {
-          this.operationStatus = C_SU;
+          client.status = C_SU;
           continue;
         }
-      } else if (this.operationStatus === C_SU) {
+      } else if (client.status === C_SU) {
         if (
           buffer[i] === 'B'.charCodeAt(0) ||
           buffer[i] === 'b'.charCodeAt(0)
         ) {
           continue;
         }
-        this.operationStatus = C_SUB;
-      } else if (this.operationStatus === C_SUB) {
+        client.status = C_SUB;
+      } else if (client.status === C_SUB) {
         if (
           buffer[i] === ' '.charCodeAt(0) ||
           buffer[i] === '\t'.charCodeAt(0)
         ) {
           continue;
         }
-        this.commandEnd = i;
-        this.operationStatus = C_SUB_ARG;
-      } else if (this.operationStatus === C_SUB_ARG) {
+        client.commandIndex = i;
+        client.status = C_SUB_ARG;
+      } else if (client.status === C_SUB_ARG) {
         if (buffer[i] === '\r'.charCodeAt(0)) {
           skip = 1;
         } else if (buffer[i] === '\n'.charCodeAt(0)) {
-          this.args.push(
-            ...buffer.subarray(this.commandEnd, buffer.length - skip),
-          );
+          client.addArgs(buffer);
           const args = buffer
-            .subarray(this.commandEnd, buffer.length - skip)
+            .subarray(client.commandIndex, i - skip)
             .toString()
             .split(' ');
           skip = 0;
-          this.clearStatus();
+          client.subscribe(args);
+          client.clearStatus();
           return args;
         }
-      } else if (this.operationStatus === C_PUB_MSG) {
-        if (buffer.length - 2 !== this.payloadSize) {
-          this.clearStatus();
-          throw new Error('[ERROR] payload size invalid\r\n');
-        }
-
-        this.operationStatus = C_PAYLOAD;
+      } else if (client.status === C_PUB_MSG) {
+        client.isValidPayloadSize(buffer.length);
+        client.status = C_PAYLOAD;
         i -= 1;
       }
     }
